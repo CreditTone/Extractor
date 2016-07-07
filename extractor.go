@@ -2,49 +2,61 @@ package extractor
 
 import (
 	"bytes"
-	"encoding/json"
+	"regexp"
+	"strings"
+	"zhongguo/authcrawler/context"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/bitly/go-simplejson"
 	"github.com/xlvector/dlog"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
+)
+
+const (
+	SET_DEFINE    = "_v"
+	TYPE_DEFINE   = "_type"
+	ROOT_DEFINE   = "_root"
+	ERROR_DEFINE  = "_error"
+	SOURCE_DEFINE = "_source"
 )
 
 type Extractor struct {
-	Filter      func(config string) (interface{}, bool)
-	Fill        func(config string) (string, bool)
-	DateFormats map[string]*DateFormat
+	Filter  func(config string) (string, bool)
+	Context *context.Context
 }
 
-func NewExtractor(filter func(config string) (interface{}, bool), fill func(config string) (string, bool)) *Extractor {
+func NewExtractor(ctx *context.Context) *Extractor {
 	instance := Extractor{
-		DateFormats: make(map[string]*DateFormat, 0),
+		Context: ctx,
+	}
+	filter := func(config string) (string, bool) {
+		if !strings.Contains(config, "||") && strings.Contains(config, "{{") && strings.Contains(config, "}}") {
+			value := instance.Context.Parse(config)
+			return value, true
+		}
+		return "", false
 	}
 	instance.Filter = filter
-	instance.Fill = fill
 	return &instance
 }
 
-func (self *Extractor) AddDateFormat(key, input, output string) {
-	self.DateFormats[key] = NewDateFormat(input, output)
-}
-
-func (self *Extractor) GetDateFormat(key string) *DateFormat {
-	return self.DateFormats[key]
-}
-
 func (self *Extractor) root(config map[string]interface{}) string {
-	xpath, ok := config["_root"]
+	xpath, ok := config[ROOT_DEFINE]
 	if !ok {
 		return ""
 	}
-	fillValue, isFill := self.fillExpression(xpath.(string))
-	if isFill {
-		xpath = fillValue
+	v, ok := self.Filter(xpath.(string))
+	if ok {
+		xpath = v
 	}
 	return xpath.(string)
+}
+
+func (self *Extractor) dataType(config map[string]interface{}) string {
+	dataType, ok := config[TYPE_DEFINE]
+	if !ok {
+		return "html"
+	}
+	return dataType.(string)
 }
 
 func (self *Extractor) errorDetector(config map[string]interface{}) string {
@@ -52,33 +64,35 @@ func (self *Extractor) errorDetector(config map[string]interface{}) string {
 	if !ok {
 		return ""
 	}
-	fillValue, isFill := self.fillExpression(xpath.(string))
-	if isFill {
-		xpath = fillValue
+	v, ok := self.Filter(xpath.(string))
+	if ok {
+		xpath = v
 	}
 	return xpath.(string)
 }
 
-func (self *Extractor) source(config map[string]interface{}) string {
-	source, ok := config["_source"]
+func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
+	source, ok := config[SOURCE_DEFINE]
 	if !ok {
-		return ""
+		return nil, false
 	}
-	return source.(string)
+	val, ok := self.Filter(source.(string))
+	if ok {
+		body := []byte(val)
+		return body, ok
+	}
+	return nil, false
 }
 
 func (self *Extractor) Do(config interface{}, body []byte) map[string]interface{} {
 	var ret interface{}
 	if m, ok := config.(map[string]interface{}); ok {
-		source := self.source(m)
-		if len(source) > 0 {
-			val, ok := self.Filter(source)
-			if ok {
-				body = []byte(val.(string))
-			}
+		val, ok := self.source(m)
+		if ok {
+			body = val
 		}
-		rt := self.root(m)
-		if rt == "json" {
+		dataType := self.dataType(m)
+		if dataType == "json" {
 			jsonBody := FilterJSONP(string(body))
 			json, err := simplejson.NewFromReader(strings.NewReader(jsonBody))
 			if err != nil {
@@ -86,13 +100,16 @@ func (self *Extractor) Do(config interface{}, body []byte) map[string]interface{
 				return nil
 			}
 			ret = self.extractJson(m, json)
-		} else {
+		} else if dataType == "html" {
 			doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 			if err != nil {
 				dlog.Warn("%s", err.Error())
 				return nil
 			}
 			ret = self.extract(config, doc.First())
+		} else if dataType == "xml" {
+		} else if dataType == "string" {
+			ret = self.extractString(config, string(body))
 		}
 	}
 
@@ -116,27 +133,12 @@ func (self *Extractor) filterExpression(v string) (interface{}, bool) {
 	return nil, false
 }
 
-func (self *Extractor) fillExpression(v string) (string, bool) {
-	if self.Fill != nil {
-		if val, isFill := self.Fill(v); isFill {
-			return val, true
-		}
-	}
-	return "", false
-}
-
 func (self *Extractor) extract(config interface{}, s *goquery.Selection) interface{} {
 	if v, ok := config.(string); ok {
 		filterValue, isFilter := self.filterExpression(v)
 		if isFilter {
 			return filterValue
 		}
-
-		fillValue, isFill := self.fillExpression(v)
-		if isFill {
-			v = fillValue
-		}
-
 		val := self.extractSingle(v, s)
 		if val == "" {
 			val = nil
@@ -210,25 +212,21 @@ func (self *Extractor) extractContainKey(m map[string]interface{}, s *goquery.Se
 	return ret
 }
 
-type Selector struct {
-	Xpath      string
-	Attr       string
-	Regex      string
-	Type       string
-	Condition  string
-	Default    string
-	JsonKey    string
-	DateFormat *DateFormat
+type HtmlSelector struct {
+	Xpath    string
+	Attr     string
+	Regex    string
+	Template string
 }
 
-func (p *Selector) String() string {
-	b, _ := json.Marshal(p)
-	return string(b)
-}
-
-func NewSelector(v string, extractor *Extractor) *Selector {
+func NewHtmlSelector(v string) *HtmlSelector {
+	ret := &HtmlSelector{}
+	if strings.Contains(v, "||") {
+		tks := strings.Split(v, "||")
+		v = tks[0]
+		ret.Template = tks[1]
+	}
 	tks := strings.Split(v, ";")
-	ret := &Selector{}
 	ret.Xpath = tks[0]
 	if len(tks) > 1 {
 		ret.Attr = tks[1]
@@ -236,44 +234,15 @@ func NewSelector(v string, extractor *Extractor) *Selector {
 	if len(tks) > 2 {
 		ret.Regex = tks[2]
 	}
-	if len(tks) > 3 {
-		ret.Type = tks[3]
-	}
-	if len(tks) > 4 {
-		ret.Condition = tks[4]
-	}
-	if len(tks) > 5 {
-		ret.Default = tks[5]
-	}
-	if len(tks) > 6 {
-		ret.DateFormat = extractor.GetDateFormat(tks[6])
-	}
 	return ret
 }
 
-func NewJsonSelector(v string, extractor *Extractor) *Selector {
-	tks := strings.Split(v, ";")
-	ret := &Selector{}
-	ret.JsonKey = tks[0]
-	if len(tks) > 1 {
-		ret.Type = tks[1]
-	}
-	if len(tks) > 2 {
-		ret.Default = tks[2]
-	}
-	if len(tks) > 3 {
-		ret.DateFormat = extractor.GetDateFormat(tks[3])
-	}
-	return ret
-}
-
-func (self *Selector) extract(buf string) interface{} {
-	buf = TrimBeginEndSpace(buf)
-	if len(self.Regex) > 0 && strings.Contains(self.Regex, "@multi ") {
-		reg := strings.Replace(self.Regex, "@multi ", "", 1)
-		return FindGroupsByIndex(reg, buf, 1)
-	} else if len(self.Regex) > 0 {
-		reg := regexp.MustCompile(self.Regex)
+func Regex(regex, buf string) (string, []string) {
+	if len(regex) > 0 && strings.Contains(regex, "@multi ") {
+		reg := strings.Replace(regex, "@multi ", "", 1)
+		return "", FindGroupsByIndex(reg, buf, 1)
+	} else if len(regex) > 0 {
+		reg := regexp.MustCompile(regex)
 		result := reg.FindAllStringSubmatch(buf, 1)
 		if len(result) > 0 {
 			group := result[0]
@@ -283,23 +252,15 @@ func (self *Selector) extract(buf string) interface{} {
 				buf = group[0]
 			}
 		} else {
-			dlog.Warn("Regex not found value %s", self.Regex)
+			dlog.Warn("regex not found value %s", regex)
 			buf = ""
 		}
 	}
-	if len(buf) > 0 && len(self.Condition) > 0 {
-		return self.extractCondition(buf)
-	}
-	if len(buf) > 0 && len(self.Default) > 0 {
-		buf = self.Default
-	}
-	if len(buf) > 0 && self.DateFormat != nil {
-		buf = self.DateFormat.Format(buf)
-	}
-	return self.convertType(buf)
+	return buf, nil
 }
 
-func (self *Selector) convertType(content string) interface{} {
+/*
+func (self *HtmlSelector) convertType(content string) interface{} {
 	var ret interface{}
 	var err error
 	if self.Type == "" {
@@ -320,34 +281,7 @@ func (self *Selector) convertType(content string) interface{} {
 		return nil
 	}
 }
-
-func (self *Selector) extractCondition(content string) interface{} {
-	if strings.HasPrefix(self.Condition, "@function") {
-		if strings.HasPrefix(self.Default, "@content") {
-			content = self.Default[9:]
-		}
-		return parseFunction(self.Condition[10:], content)
-	}
-	ret := make(map[string]string)
-	con := strings.Split(self.Condition, ",")
-	for _, subCon := range con {
-		conResult := strings.Split(subCon, "=")
-		if len(conResult) > 1 {
-			ret[conResult[0]] = conResult[1]
-		} else if len(conResult) == 1 {
-			ret[conResult[0]] = ""
-		}
-	}
-	for k, v := range ret {
-		if strings.Contains(content, k) {
-			return self.convertType(v)
-		}
-	}
-	if len(self.Default) > 0 {
-		return self.convertType(self.Default)
-	}
-	return content
-}
+*/
 
 func (self *Extractor) extractSingle(v string, s *goquery.Selection) interface{} {
 	if v == "@data" {
@@ -358,28 +292,35 @@ func (self *Extractor) extractSingle(v string, s *goquery.Selection) interface{}
 		}
 		return data
 	}
-	sel := NewSelector(v, self)
+	sel := NewHtmlSelector(v)
 	b := s
 	if len(sel.Xpath) > 0 {
 		b = queryXpath(sel.Xpath, s)
 	}
-
-	if b == nil || b.Size() == 0 {
-		return sel.convertType(sel.Default)
-	}
+	var text string
 	if len(sel.Attr) > 0 {
 		if sel.Attr == "html" {
-			htmlText, _ := b.First().Html()
-			return sel.extract(htmlText)
+			text, _ = b.First().Html()
+		} else {
+			text, _ = b.First().Attr(sel.Attr)
+			if (sel.Attr == "href" || sel.Attr == "src") && strings.HasPrefix(text, "//") {
+				text = "https:" + text
+			}
+			text = strings.TrimSpace(text)
 		}
-		ret, _ := b.First().Attr(sel.Attr)
-		if (sel.Attr == "href" || sel.Attr == "src") && strings.HasPrefix(ret, "//") {
-			ret = "https:" + ret
-		}
-		return sel.extract(ret)
 	} else {
-		return sel.extract(b.First().Text())
+		text = strings.TrimSpace(b.First().Text())
 	}
+
+	text, ret := Regex(sel.Regex, text)
+	if ret != nil {
+		return ret
+	}
+	if len(sel.Template) > 0 {
+		self.Context.Set(SET_DEFINE, text)
+		text, _ = self.Filter(sel.Template)
+	}
+	return text
 }
 
 func queryXpath(xpath string, s *goquery.Selection) *goquery.Selection {
@@ -413,83 +354,4 @@ func queryXpath(xpath string, s *goquery.Selection) *goquery.Selection {
 		b = s.Find(xpath)
 	}
 	return b
-}
-
-type Function struct {
-	function map[string]func(string) interface{}
-}
-
-func newFunction() *Function {
-	f := &Function{
-		function: make(map[string]func(string) interface{}),
-	}
-	f.function["O_SCORE_HTML"] = O_SCORE_HTML
-	f.function["O_RATE_HTML"] = O_RATE_HTML
-	return f
-}
-
-func parseFunction(funcName, content string) interface{} {
-	f := newFunction()
-	parsefunc := f.function[funcName]
-	return parsefunc(content)
-}
-
-func O_SCORE_HTML(content string) interface{} {
-	startTime, err := getStartTime(content)
-	if err != nil {
-		return nil
-	}
-	matcher := regexp.MustCompile("arrYear\":\\[(.*)\\]")
-	regResult := matcher.FindAllStringSubmatch(content, 1)
-	if len(regResult[0]) < 2 {
-		return nil
-	}
-	result := strings.Split(regResult[0][1], ",")
-	ret := make(map[string]map[string]string)
-	for i := 0; i < 12; i++ {
-		sub := make(map[string]string)
-		var value, diff string
-		if i*30 < len(result) && len(result[i*30]) > 0 {
-			value = result[i*30]
-			if i == 0 {
-				diff = "0"
-			} else {
-				nowMonth, okNow := strconv.Atoi(result[i*30])
-				preMonth, okPre := strconv.Atoi(result[i*30-1])
-				if okNow != nil || okPre != nil {
-					dlog.Warn("O_SCORE_HTML function: string to int err")
-					continue
-				}
-				diff = strconv.Itoa(nowMonth - preMonth)
-			}
-			sub["总积分"] = value
-			sub["积分变动"] = diff
-			ret[startTime.Format("2006.01.02")] = sub
-			startTime = startTime.AddDate(0, 1, 0)
-		}
-	}
-	return ret
-}
-
-func getStartTime(content string) (time.Time, error) {
-	buf := []byte(content)
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(buf))
-	if err != nil {
-		dlog.Warn("goquery O_SCORE_HTML err: %s", err.Error())
-		return time.Now(), nil
-	}
-	startYear := doc.Find(".year-ago p").Eq(0).Text()
-	startMonthDay := doc.Find(".year-ago p").Eq(1).Text()
-	startTime := startYear + "." + startMonthDay
-	return time.Parse("2006.01.02", startTime)
-}
-
-func O_RATE_HTML(content string) interface{} {
-	startTime, err := time.Parse("Mon Jan 02 15:04:05 CST 2006", content)
-	if err != nil {
-		return nil
-	}
-	duration, _ := time.ParseDuration("24h")
-	startTime = startTime.Add(duration)
-	return startTime.Format("2006-01-02")
 }

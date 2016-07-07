@@ -1,13 +1,14 @@
 package extractor
 
 import (
-	"github.com/bitly/go-simplejson"
-	"github.com/xlvector/dlog"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/bitly/go-simplejson"
+	"github.com/xlvector/dlog"
 )
 
 func FindResult(reg, body string) [][]string {
@@ -123,10 +124,4 @@ func ReadFile(path string) []byte {
 		return nil
 	}
 	return b
-}
-
-func TrimBeginEndSpace(s string) string {
-	rep := strings.TrimLeft(s, "\n\r \t")
-	rep = strings.TrimRight(rep, "\n\r \t")
-	return rep
 }
