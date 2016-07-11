@@ -91,14 +91,7 @@ func (self *Extractor) extractJson(config interface{}, json *simplejson.Json) in
 		doc := json
 		dataType := self.dataType(m)
 		if dataType == "jsonstring" {
-			val, err := doc.String()
-			if len(val) > 0 {
-				doc, err = simplejson.NewFromReader(strings.NewReader(val))
-				if err != nil {
-					dlog.Warn("convert to string error:%s value:%s", err.Error(), val)
-					return nil
-				}
-			}
+			doc = UnMarshal(doc)
 		}
 		rt := self.root(m)
 		if len(rt) > 0 {
@@ -136,9 +129,22 @@ func (self *Extractor) extractJson(config interface{}, json *simplejson.Json) in
 	return nil
 }
 
+func UnMarshal(json *simplejson.Json) *simplejson.Json {
+	val, err := json.String()
+	if len(val) > 0 {
+		json, err = simplejson.NewFromReader(strings.NewReader(val))
+		if err != nil {
+			dlog.Warn("convert to string error:%s value:%s", err.Error(), val)
+			return nil
+		}
+	}
+	return json
+}
+
 type JsonSelector struct {
-	JsonKey  string
-	Template string
+	JsonKey   string
+	Template  string
+	UnMarshal bool
 }
 
 func NewJsonSelector(v string) *JsonSelector {
@@ -150,6 +156,9 @@ func NewJsonSelector(v string) *JsonSelector {
 	}
 	tks := strings.Split(v, ";")
 	ret.JsonKey = tks[0]
+	if len(tks) > 1 && tks[1] == "true" {
+		ret.UnMarshal = true
+	}
 	return ret
 }
 
@@ -162,6 +171,9 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 
 	if len(sel.JsonKey) > 0 {
 		b := GetJsonPath(sel.JsonKey, json)
+		if sel.UnMarshal {
+			b = UnMarshal(b)
+		}
 		if b != nil {
 			if str, err := b.String(); err == nil {
 				ret = str
@@ -183,6 +195,7 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 			dlog.Warn("path:%s not found value", v)
 			return nil
 		}
+
 		if len(sel.Template) > 0 {
 			self.Context.Set(SET_DEFINE, ret)
 			ret, _ = self.Filter(sel.Template)

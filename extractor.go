@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	SET_DEFINE    = "_v"
-	TYPE_DEFINE   = "_type"
-	ROOT_DEFINE   = "_root"
-	ERROR_DEFINE  = "_error"
-	SOURCE_DEFINE = "_source"
+	SET_DEFINE      = "_v"
+	TYPE_DEFINE     = "_type"
+	JSONTYPE_DEFINE = "_jsontype"
+	ROOT_DEFINE     = "_root"
+	ERROR_DEFINE    = "_error"
+	SOURCE_DEFINE   = "_source"
 )
 
 type Extractor struct {
@@ -53,6 +54,9 @@ func (self *Extractor) root(config map[string]interface{}) string {
 
 func (self *Extractor) dataType(config map[string]interface{}) string {
 	dataType, ok := config[TYPE_DEFINE]
+	if !ok {
+		dataType, ok = config[JSONTYPE_DEFINE]
+	}
 	if !ok {
 		return "html"
 	}
