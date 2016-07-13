@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"regexp"
 	"strings"
-	"zhongguo/authcrawler/context"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/bitly/go-simplejson"
@@ -21,22 +20,12 @@ const (
 )
 
 type Extractor struct {
-	Filter  func(config string) (string, bool)
-	Context *context.Context
+	Filter     func(config string) (string, bool)
+	DoTemplate func(template, v string) string
 }
 
-func NewExtractor(ctx *context.Context) *Extractor {
-	instance := Extractor{
-		Context: ctx,
-	}
-	filter := func(config string) (string, bool) {
-		if !strings.Contains(config, "||") && strings.Contains(config, "{{") && strings.Contains(config, "}}") {
-			value := instance.Context.Parse(config)
-			return value, true
-		}
-		return "", false
-	}
-	instance.Filter = filter
+func NewExtractor() *Extractor {
+	instance := Extractor{}
 	return &instance
 }
 
@@ -46,7 +35,7 @@ func (self *Extractor) root(config map[string]interface{}) string {
 		return ""
 	}
 	v, ok := self.Filter(xpath.(string))
-	if ok {
+	if ok || len(v) > 0 {
 		xpath = v
 	}
 	return xpath.(string)
@@ -128,20 +117,13 @@ func (self *Extractor) Do(config interface{}, body []byte) map[string]interface{
 	return mret
 }
 
-func (self *Extractor) filterExpression(v string) (interface{}, bool) {
-	if self.Filter != nil {
-		if val, isFilter := self.Filter(v); isFilter {
-			return val, true
-		}
-	}
-	return nil, false
-}
-
 func (self *Extractor) extract(config interface{}, s *goquery.Selection) interface{} {
 	if v, ok := config.(string); ok {
-		filterValue, isFilter := self.filterExpression(v)
+		filterValue, isFilter := self.Filter(v)
 		if isFilter {
 			return filterValue
+		} else if len(filterValue) > 0 {
+			v = filterValue
 		}
 		val := self.extractSingle(v, s)
 		if val == "" {
@@ -225,8 +207,8 @@ type HtmlSelector struct {
 
 func NewHtmlSelector(v string) *HtmlSelector {
 	ret := &HtmlSelector{}
-	if strings.Contains(v, "||") {
-		tks := strings.Split(v, "||")
+	if strings.Contains(v, ">|") {
+		tks := strings.Split(v, ">|")
 		v = tks[0]
 		ret.Template = tks[1]
 	}
@@ -321,8 +303,7 @@ func (self *Extractor) extractSingle(v string, s *goquery.Selection) interface{}
 		return ret
 	}
 	if len(sel.Template) > 0 {
-		self.Context.Set(SET_DEFINE, text)
-		text, _ = self.Filter(sel.Template)
+		text = self.DoTemplate(sel.Template, text)
 	}
 	return text
 }

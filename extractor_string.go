@@ -9,6 +9,8 @@ func (self *Extractor) extractString(config interface{}, body string) interface{
 		if self.Filter != nil {
 			if val, isFilter := self.Filter(v); isFilter {
 				return val
+			} else if len(val) > 0 {
+				v = val
 			}
 		}
 		val, array := Regex(v, body)

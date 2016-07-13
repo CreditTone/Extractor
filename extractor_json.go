@@ -78,6 +78,8 @@ func (self *Extractor) extractJson(config interface{}, json *simplejson.Json) in
 		if self.Filter != nil {
 			if val, isFilter := self.Filter(v); isFilter {
 				return val
+			} else if len(val) > 0 {
+				v = val
 			}
 		}
 		val := self.ExtractJsonSingle(v, json)
@@ -149,8 +151,8 @@ type JsonSelector struct {
 
 func NewJsonSelector(v string) *JsonSelector {
 	ret := &JsonSelector{}
-	if strings.Contains(v, "||") {
-		tks := strings.Split(v, "||")
+	if strings.Contains(v, ">|") {
+		tks := strings.Split(v, ">|")
 		v = tks[0]
 		ret.Template = tks[1]
 	}
@@ -197,8 +199,7 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 		}
 
 		if len(sel.Template) > 0 {
-			self.Context.Set(SET_DEFINE, ret)
-			ret, _ = self.Filter(sel.Template)
+			ret = self.DoTemplate(sel.Template, ret.(string))
 		}
 	}
 
