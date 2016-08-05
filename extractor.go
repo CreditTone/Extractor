@@ -144,6 +144,9 @@ func (self *Extractor) extract(config interface{}, s *goquery.Selection) interfa
 			doc = queryXpath(rt, s)
 		}
 		if doc == nil || doc.Size() == 0 {
+			if isArray {
+				return []map[string]interface{}{}
+			}
 			return nil
 		} else if isArray || doc.Size() > 1 {
 			ret := []map[string]interface{}{}
