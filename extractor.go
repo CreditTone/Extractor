@@ -77,7 +77,7 @@ func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
 	return nil, false
 }
 
-func (self *Extractor) Do(config interface{}, body []byte) map[string]interface{} {
+func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 	var ret interface{}
 	if m, ok := config.(map[string]interface{}); ok {
 		val, ok := self.source(m)
@@ -105,16 +105,7 @@ func (self *Extractor) Do(config interface{}, body []byte) map[string]interface{
 			ret = self.extractString(config, string(body))
 		}
 	}
-
-	if ret == nil {
-		return make(map[string]interface{}, 0)
-	}
-	mret, ok := ret.(map[string]interface{})
-	if !ok {
-		dlog.Warn("extractorConvertError:%v", ret)
-		return nil
-	}
-	return mret
+	return ret
 }
 
 func (self *Extractor) extract(config interface{}, s *goquery.Selection) interface{} {
