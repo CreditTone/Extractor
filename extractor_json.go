@@ -173,7 +173,7 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 
 	if len(sel.JsonKey) > 0 {
 		b := GetJsonPath(sel.JsonKey, json)
-		if sel.UnMarshal {
+		if sel.UnMarshal && b != nil {
 			b = UnMarshal(b)
 		}
 		if b != nil {
