@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"bytes"
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -75,6 +76,21 @@ func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
 		return body, ok
 	}
 	return nil, false
+}
+
+func (self *Extractor) RpcParse(config, body []byte, reply *string) error {
+	m := map[string]interface{}{}
+	err := json.Unmarshal(config, m)
+	if err != nil {
+		return err
+	}
+	ret := self.Do(m, body)
+	body, err = json.Marshal(ret)
+	if err != nil {
+		return err
+	}
+	*reply = string(body)
+	return nil
 }
 
 func (self *Extractor) Do(config interface{}, body []byte) interface{} {
