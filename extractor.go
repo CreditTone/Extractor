@@ -78,15 +78,20 @@ func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
 	return nil, false
 }
 
-func (self *Extractor) RpcParse(config, body []byte, reply *string) error {
+func (self *Extractor) RpcParse(params string, reply *string) error {
+	split := strings.Split(params, "######")
 	m := map[string]interface{}{}
-	err := json.Unmarshal(config, m)
+	err := json.Unmarshal([]byte(split[0]), &m)
 	if err != nil {
+		dlog.Warn("%v with %s", err, split[0])
 		return err
 	}
+	var body []byte
+	body = []byte(split[1])
 	ret := self.Do(m, body)
 	body, err = json.Marshal(ret)
 	if err != nil {
+		dlog.Warn("%v", err)
 		return err
 	}
 	*reply = string(body)
