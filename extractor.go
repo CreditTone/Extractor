@@ -79,7 +79,7 @@ func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
 }
 
 func (self *Extractor) RpcParse(params string, reply *string) error {
-	split := strings.Split(params, "######")
+	split := strings.SplitN(params, "######", 2)
 	m := map[string]interface{}{}
 	err := json.Unmarshal([]byte(split[0]), &m)
 	if err != nil {
@@ -95,6 +95,9 @@ func (self *Extractor) RpcParse(params string, reply *string) error {
 		return err
 	}
 	*reply = string(body)
+	if strings.Contains(*reply, "\\u0026") {
+		*reply = strings.Replace(*reply, "\\u0026", "&", -1)
+	}
 	return nil
 }
 
