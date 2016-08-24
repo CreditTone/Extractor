@@ -27,6 +27,9 @@ type Extractor struct {
 
 func NewExtractor() *Extractor {
 	instance := Extractor{}
+	instance.Filter = func(config string) (string, bool) {
+		return "", false
+	}
 	return &instance
 }
 
@@ -256,7 +259,7 @@ func Regex(regex, buf string) (string, []string) {
 				buf = group[0]
 			}
 		} else {
-			dlog.Warn("regex not found value %s", regex)
+			//dlog.Warn("regex not found value %s", regex)
 			buf = ""
 		}
 	}
