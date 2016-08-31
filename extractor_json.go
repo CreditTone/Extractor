@@ -195,7 +195,7 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 		}
 		if ret == nil {
 			dlog.Warn("path:%s not found value", v)
-			return nil
+			return ""
 		}
 
 		if len(sel.Template) > 0 {

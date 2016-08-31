@@ -3,12 +3,14 @@ package extractor
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/bitly/go-simplejson"
 	"github.com/xlvector/dlog"
+	"golang.org/x/net/html"
 )
 
 const (
@@ -83,7 +85,12 @@ func (self *Extractor) source(config map[string]interface{}) ([]byte, bool) {
 
 func (self *Extractor) RpcParse(params string, reply *string) error {
 	split := strings.SplitN(params, "######", 2)
-	m := map[string]interface{}{}
+	var m interface{}
+	if strings.HasPrefix(split[0], "{") {
+		m = map[string]interface{}{}
+	} else if strings.HasPrefix(split[0], "[") {
+		m = []string{}
+	}
 	err := json.Unmarshal([]byte(split[0]), &m)
 	if err != nil {
 		dlog.Warn("%v with %s", err, split[0])
@@ -92,6 +99,14 @@ func (self *Extractor) RpcParse(params string, reply *string) error {
 	var body []byte
 	body = []byte(split[1])
 	ret := self.Do(m, body)
+	if ret == nil {
+		dlog.Warn("return nil")
+		return errors.New("return nil")
+	}
+	if str, ok := ret.(string); ok {
+		*reply = str
+		return nil
+	}
 	body, err = json.Marshal(ret)
 	if err != nil {
 		dlog.Warn("%v", err)
@@ -129,8 +144,59 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 			ret = self.extract(config, doc.First())
 		} else if dataType == "xml" {
 		} else if dataType == "string" {
-			ret = self.extractString(config, string(body))
+			input := html.UnescapeString(string(body))
+			ret = self.extractString(config, input)
 		}
+	} else if a, ok := config.([]interface{}); ok {
+		dataType := "html"
+		val := string(body)
+		for _, single := range a {
+			c := single.(string)
+			switch c {
+			case "_html":
+				dataType = "html"
+				continue
+			case "_json":
+				dataType = "json"
+				continue
+			case "_string":
+				dataType = "string"
+				continue
+			}
+
+			if dataType == "html" {
+				doc, err := goquery.NewDocumentFromReader(strings.NewReader(val))
+				if err != nil {
+					dlog.Warn("%s", err.Error())
+					return nil
+				}
+				val = self.extractSingle(c, doc.First()).(string)
+				if val == "" {
+					dlog.Warn("return nil")
+					return nil
+				}
+			} else if dataType == "json" {
+				jsonBody := FilterJSONP(val)
+				json, err := simplejson.NewFromReader(strings.NewReader(val))
+				if err != nil {
+					dlog.Warn("%s: %s", jsonBody, err.Error())
+					return nil
+				}
+				val = self.ExtractJsonSingle(c, json).(string)
+				if val == "" {
+					dlog.Warn("return nil")
+					return nil
+				}
+			} else if dataType == "string" {
+				val2 := self.extractString(c, val)
+				if val2 == nil {
+					dlog.Warn("return nil")
+					return nil
+				}
+				val = val2.(string)
+			}
+		}
+		return val
 	}
 	return ret
 }
@@ -259,7 +325,7 @@ func Regex(regex, buf string) (string, []string) {
 				buf = group[0]
 			}
 		} else {
-			//dlog.Warn("regex not found value %s", regex)
+			dlog.Warn("regex not found value %s", regex)
 			buf = ""
 		}
 	}
