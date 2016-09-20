@@ -370,6 +370,9 @@ func (self *Extractor) extractSingle(v string, s *goquery.Selection) interface{}
 	if len(sel.Xpath) > 0 {
 		b = queryXpath(sel.Xpath, s)
 	}
+	if b == nil {
+		return nil
+	}
 	var text string
 	if len(sel.Attr) > 0 {
 		if sel.Attr == "html" {

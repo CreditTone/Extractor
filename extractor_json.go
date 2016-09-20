@@ -18,16 +18,51 @@ func isJsonArray(json *simplejson.Json) (int, bool) {
 	return 0, false
 }
 
-func GetJsonPath(jsonKey string, json *simplejson.Json) *simplejson.Json {
-	path := strings.Split(jsonKey, ".")
+func NewSimplejson(data interface{}) *simplejson.Json {
+	item := &simplejson.Json{}
+	item.SetPath([]string{}, data)
+	return item
+}
 
-	for x := 0; x < len(path); x++ {
+func GetJsonArray(json *simplejson.Json) []*simplejson.Json {
+	a, err := json.Array()
+	if err == nil {
+		jsonArr := []*simplejson.Json{}
+		for index, _ := range a {
+			jsonArr = append(jsonArr, NewSimplejson(a[index]))
+		}
+		return jsonArr
+	}
+	return nil
+}
+
+func getJsonPath(jsonpath []string, json *simplejson.Json) *simplejson.Json {
+	for x := 0; x < len(jsonpath); x++ {
 		if json == nil {
 			break
 		}
-		cmd := path[x]
-		if strings.HasPrefix(cmd, "[") && strings.HasSuffix(cmd, "]") {
-			indexStr := FindGroupByIndex("\\d+", cmd, 0)
+		cmd := jsonpath[x]
+		if cmd == "[*]" {
+			if jsonArr := GetJsonArray(json); jsonArr != nil {
+				ret := []interface{}{}
+				for _, item := range jsonArr {
+					itemResult := getJsonPath(jsonpath[x+1:len(jsonpath)], item)
+					if itemResult != nil {
+						arr, err := itemResult.Array()
+						if err != nil {
+							ret = append(ret, itemResult.Interface())
+						} else {
+							for _, val := range arr {
+								ret = append(ret, val)
+							}
+						}
+					}
+				}
+				return NewSimplejson(ret)
+			}
+			return nil
+		} else if strings.HasPrefix(cmd, "[") && strings.HasSuffix(cmd, "]") {
+			indexStr := cmd[1 : len(cmd)-1]
 			index, err := strconv.Atoi(indexStr)
 			if err != nil {
 				dlog.Warn("convet int error %v", err)
@@ -70,6 +105,11 @@ func GetJsonPath(jsonKey string, json *simplejson.Json) *simplejson.Json {
 		}
 	}
 	return json
+}
+
+func GetJsonPath(jsonKey string, json *simplejson.Json) *simplejson.Json {
+	path := strings.Split(jsonKey, ".")
+	return getJsonPath(path, json)
 }
 
 func (self *Extractor) extractJson(config interface{}, json *simplejson.Json) interface{} {
