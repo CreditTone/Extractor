@@ -131,7 +131,7 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 			jsonBody := FilterJSONP(string(body))
 			json, err := simplejson.NewFromReader(strings.NewReader(jsonBody))
 			if err != nil {
-				dlog.Warn("%s: %s", jsonBody, err.Error())
+				dlog.Warn("%s", err.Error())
 				return nil
 			}
 			ret = self.extractJson(m, json)
