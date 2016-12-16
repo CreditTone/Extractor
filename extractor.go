@@ -153,13 +153,13 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 		for _, single := range a {
 			c := single.(string)
 			switch c {
-			case "_html" || "html":
+			case "_html", "html":
 				dataType = "html"
 				continue
-			case "_json" || "json":
+			case "_json", "json":
 				dataType = "json"
 				continue
-			case "_string" || "string":
+			case "_string", "string":
 				dataType = "string"
 				continue
 			}
