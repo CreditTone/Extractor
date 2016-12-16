@@ -153,13 +153,13 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 		for _, single := range a {
 			c := single.(string)
 			switch c {
-			case "_html":
+			case "_html" || "html":
 				dataType = "html"
 				continue
-			case "_json":
+			case "_json" || "json":
 				dataType = "json"
 				continue
-			case "_string":
+			case "_string" || "string":
 				dataType = "string"
 				continue
 			}
@@ -177,7 +177,7 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 				}
 			} else if dataType == "json" {
 				jsonBody := FilterJSONP(val)
-				json, err := simplejson.NewFromReader(strings.NewReader(val))
+				json, err := simplejson.NewFromReader(strings.NewReader(jsonBody))
 				if err != nil {
 					dlog.Warn("%s: %s", jsonBody, err.Error())
 					return nil
