@@ -187,6 +187,7 @@ type JsonSelector struct {
 	JsonKey   string
 	Template  string
 	UnMarshal bool
+	Regex     string
 }
 
 func NewJsonSelector(v string) *JsonSelector {
@@ -200,6 +201,9 @@ func NewJsonSelector(v string) *JsonSelector {
 	ret.JsonKey = tks[0]
 	if len(tks) > 1 && tks[1] == "true" {
 		ret.UnMarshal = true
+	}
+	if len(tks) > 2 {
+		ret.Regex = tks[2]
 	}
 	return ret
 }
@@ -241,6 +245,10 @@ func (self *Extractor) ExtractJsonSingle(v string, json *simplejson.Json) interf
 		if len(sel.Template) > 0 {
 			ret = self.DoTemplate(sel.Template, ret.(string))
 		}
+	}
+
+	if len(sel.Regex) > 0 {
+		ret, _ = Regex(sel.Regex, ret.(string))
 	}
 
 	return ret
