@@ -97,7 +97,7 @@ func getJsonPath(jsonpath []string, json *simplejson.Json) *simplejson.Json {
 		} else {
 			temp, exist := json.CheckGet(cmd)
 			if !exist {
-				dlog.Warn("jsonKey :%s not exist in %v", cmd, json)
+				dlog.Warn("jsonKey :%s not exist in the %s", cmd, description(json))
 				json = nil
 			} else {
 				json = temp
@@ -105,6 +105,18 @@ func getJsonPath(jsonpath []string, json *simplejson.Json) *simplejson.Json {
 		}
 	}
 	return json
+}
+
+func description(json *simplejson.Json) string {
+	jsonEncode, _ := json.Encode()
+	if jsonEncode != nil {
+		jsonStr := string(jsonEncode)
+		if len(jsonStr) > 100 {
+			jsonStr = jsonStr[0:100] + "......"
+		}
+		return jsonStr
+	}
+	return ""
 }
 
 func GetJsonPath(jsonKey string, json *simplejson.Json) *simplejson.Json {

@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"zhongguo/authcrawler/dlog"
+
 	"github.com/bitly/go-simplejson"
-	"github.com/xlvector/dlog"
 )
 
 func FindResult(reg, body string) [][]string {
