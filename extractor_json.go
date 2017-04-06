@@ -154,6 +154,9 @@ func (self *Extractor) extractJson(config interface{}, json *simplejson.Json) in
 				return nil
 			}
 		}
+		if isEmptyParse(m) {
+			return doc.Interface()
+		}
 		length, yes := isJsonArray(doc)
 		if yes == false {
 			ret := make(map[string]interface{})
@@ -193,6 +196,15 @@ func UnMarshal(json *simplejson.Json) *simplejson.Json {
 		}
 	}
 	return json
+}
+
+func isEmptyParse(config map[string]interface{}) bool {
+	for k, _ := range config {
+		if !strings.HasPrefix(k, "_") {
+			return false
+		}
+	}
+	return true
 }
 
 type JsonSelector struct {
