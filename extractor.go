@@ -172,7 +172,6 @@ func (self *Extractor) Do(config interface{}, body []byte) interface{} {
 				}
 				val = self.extractSingle(c, doc.First()).(string)
 				if val == "" {
-					dlog.Warn("return nil")
 					return nil
 				}
 			} else if dataType == "json" {
